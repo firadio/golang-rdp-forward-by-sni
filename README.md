@@ -69,10 +69,53 @@ GOOS=windows GOARCH=amd64 go build -o rdp-forward.exe
 ./rdp-forward -target 127.0.0.1:3389 -sni "rdp.example.com" -debug
 ```
 
+### 使用配置文件（推荐）
+
+支持使用JSON配置文件，类似sing-box的`-c`参数：
+
+```bash
+# 使用配置文件启动
+./rdp-forward -c config.json
+```
+
+**配置文件示例** (`config.json`):
+
+```json
+{
+  "listen": ":3389",
+  "target": "127.0.0.1:28820",
+  "sni_whitelist": [
+    "rdp.example.com",
+    "rdp2.example.com",
+    "192.168.1.100"
+  ],
+  "client_whitelist": [
+    "DESKTOP-ABC",
+    "LAPTOP-XYZ"
+  ],
+  "debug": false,
+  "log_file": "/var/log/rdp-forward.log"
+}
+```
+
+**配置文件字段说明**：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `listen` | string | 监听地址和端口（如`:3389`） |
+| `target` | string | 目标服务器地址（如`127.0.0.1:28820`） |
+| `sni_whitelist` | array | SNI白名单数组（TLS连接的目标域名/IP） |
+| `client_whitelist` | array | 客户端计算机名白名单数组（非TLS连接） |
+| `debug` | boolean | 是否启用调试模式 |
+| `log_file` | string | 日志文件路径（可选） |
+
+**注意**: 配置文件和命令行参数可以混合使用，但配置文件优先级更高。建议使用配置文件以便于管理和版本控制。
+
 ## 命令行参数
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
+| `-c` | 空 | 配置文件路径（JSON格式） |
 | `-listen` | `:3389` | 监听地址和端口 |
 | `-target` | **必填** | 目标服务器地址（格式：`IP:端口`） |
 | `-sni` | 空 | SNI白名单（TLS连接的目标域名/IP），多个值用逗号分隔 |

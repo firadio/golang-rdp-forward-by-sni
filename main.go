@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -24,6 +25,67 @@ type Config struct {
 	ClientWhitelistStr string
 	Debug              bool
 	LogFilePath        string // 日志文件路径（用于追加模式写入）
+}
+
+// JSONConfig JSON配置文件结构
+type JSONConfig struct {
+	Listen          string   `json:"listen"`           // 监听地址
+	Target          string   `json:"target"`           // 目标地址
+	SNIWhitelist    []string `json:"sni_whitelist"`    // SNI白名单数组
+	ClientWhitelist []string `json:"client_whitelist"` // 客户端白名单数组
+	Debug           bool     `json:"debug"`            // 调试模式
+	LogFile         string   `json:"log_file"`         // 日志文件路径
+}
+
+// 从JSON配置文件加载配置
+func loadConfigFromFile(filename string) (*Config, error) {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, fmt.Errorf("读取配置文件失败: %v", err)
+	}
+
+	var jsonConfig JSONConfig
+	if err := json.Unmarshal(data, &jsonConfig); err != nil {
+		return nil, fmt.Errorf("解析配置文件失败: %v", err)
+	}
+
+	config := &Config{
+		SNIWhitelist:    make(map[string]bool),
+		ClientWhitelist: make(map[string]bool),
+		ListenPort:      jsonConfig.Listen,
+		TargetAddr:      jsonConfig.Target,
+		Debug:           jsonConfig.Debug,
+		LogFilePath:     jsonConfig.LogFile,
+	}
+
+	// 处理SNI白名单
+	if len(jsonConfig.SNIWhitelist) > 0 {
+		config.SNIWhitelistStr = strings.Join(jsonConfig.SNIWhitelist, ",")
+		for _, sni := range jsonConfig.SNIWhitelist {
+			sni = strings.TrimSpace(sni)
+			if sni != "" {
+				config.SNIWhitelist[sni] = true
+			}
+		}
+	}
+
+	// 处理客户端白名单
+	if len(jsonConfig.ClientWhitelist) > 0 {
+		config.ClientWhitelistStr = strings.Join(jsonConfig.ClientWhitelist, ",")
+		for _, client := range jsonConfig.ClientWhitelist {
+			client = strings.TrimSpace(client)
+			if client != "" {
+				config.ClientWhitelist[client] = true
+			}
+		}
+	}
+
+	// 设置默认值
+	if config.ListenPort == "" {
+		config.ListenPort = ":3389"
+	}
+
+	return config, nil
 }
 
 // Connection 连接对象
@@ -302,7 +364,9 @@ func runServer(config *Config, stopCh <-chan struct{}) {
 
 func main() {
 	var serviceCmd string
+	var configFile string
 	flag.StringVar(&serviceCmd, "service", "", "服务命令: install, uninstall, start, stop")
+	flag.StringVar(&configFile, "c", "", "配置文件路径（JSON格式）")
 
 	config := &Config{
 		SNIWhitelist:    make(map[string]bool),
@@ -317,6 +381,36 @@ func main() {
 	flag.BoolVar(&config.Debug, "debug", false, "调试模式（显示详细数据包信息）")
 	flag.Parse()
 
+	// 如果指定了配置文件，从文件加载配置
+	if configFile != "" {
+		var err error
+		config, err = loadConfigFromFile(configFile)
+		if err != nil {
+			log.Fatalf("加载配置文件失败: %v", err)
+		}
+	} else {
+		// 没有使用配置文件时，解析命令行参数的白名单
+		// 解析SNI白名单
+		if config.SNIWhitelistStr != "" {
+			for _, sni := range strings.Split(config.SNIWhitelistStr, ",") {
+				sni = strings.TrimSpace(sni)
+				if sni != "" {
+					config.SNIWhitelist[sni] = true
+				}
+			}
+		}
+
+		// 解析客户端白名单
+		if config.ClientWhitelistStr != "" {
+			for _, client := range strings.Split(config.ClientWhitelistStr, ",") {
+				client = strings.TrimSpace(client)
+				if client != "" {
+					config.ClientWhitelist[client] = true
+				}
+			}
+		}
+	}
+
 	// 处理服务命令
 	if serviceCmd != "" {
 		err := handleServiceCommand(serviceCmd, config)
@@ -327,27 +421,7 @@ func main() {
 	}
 
 	if config.TargetAddr == "" {
-		log.Fatal("必须指定 -target 参数")
-	}
-
-	// 解析SNI白名单
-	if config.SNIWhitelistStr != "" {
-		for _, sni := range strings.Split(config.SNIWhitelistStr, ",") {
-			sni = strings.TrimSpace(sni)
-			if sni != "" {
-				config.SNIWhitelist[sni] = true
-			}
-		}
-	}
-
-	// 解析客户端白名单
-	if config.ClientWhitelistStr != "" {
-		for _, client := range strings.Split(config.ClientWhitelistStr, ",") {
-			client = strings.TrimSpace(client)
-			if client != "" {
-				config.ClientWhitelist[client] = true
-			}
-		}
+		log.Fatal("必须指定 -target 参数或配置文件")
 	}
 
 	// 检查是否作为Windows服务运行

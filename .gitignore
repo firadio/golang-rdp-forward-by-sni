@@ -11,5 +11,8 @@ rdp-forward-darwin
 # Log files
 *.log
 
+# Config files
+config.json
+
 # Misc
 nul
