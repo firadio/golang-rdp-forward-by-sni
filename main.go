@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -95,11 +96,15 @@ func logMsg(config *Config, level string, connID int, clientAddr string, format 
 	// 输出到控制台
 	fmt.Print(logLine)
 
-	// 如果配置了日志文件，同时写入文件 (使用 \r\n 作为换行符)
+	// 如果配置了日志文件，同时写入文件
 	if config.LogFile != nil {
-		// 替换 \n 为 \r\n 用于Windows文件日志
-		fileLogLine := logLine[:len(logLine)-1] + "\r\n"
-		config.LogFile.WriteString(fileLogLine)
+		// Windows使用\r\n，其他系统使用\n
+		if runtime.GOOS == "windows" {
+			fileLogLine := logLine[:len(logLine)-1] + "\r\n"
+			config.LogFile.WriteString(fileLogLine)
+		} else {
+			config.LogFile.WriteString(logLine)
+		}
 	}
 }
 

@@ -15,15 +15,37 @@
 
 ### 编译
 
-```bash
-go build -o rdp-forward main.go
-```
-
-或在Windows上:
+**Windows:**
 
 ```bash
 go build -o rdp-forward.exe
 ```
+
+**Linux:**
+
+```bash
+go build -o rdp-forward
+```
+
+**macOS:**
+
+```bash
+go build -o rdp-forward
+```
+
+**交叉编译:**
+
+```bash
+# 在Windows上编译Linux版本
+set GOOS=linux
+set GOARCH=amd64
+go build -o rdp-forward-linux
+
+# 在Linux/macOS上编译Windows版本
+GOOS=windows GOARCH=amd64 go build -o rdp-forward.exe
+```
+
+**注意**: Windows服务功能仅在Windows平台可用。在Linux/macOS上编译的版本不包含服务管理功能，但核心转发功能完全可用。
 
 ### 基本使用（控制台模式）
 
@@ -333,10 +355,30 @@ Get-Content "C:\Program Files\RDPForward\rdp-forward.log" -Wait -Tail 50
 
 ```
 .
-├── main.go           # 主程序文件
-├── README.md         # 项目文档
-└── rdp-forward       # 编译后的可执行文件
+├── main.go              # 主程序文件
+├── service_windows.go   # Windows服务支持（仅Windows平台编译）
+├── service_unix.go      # 非Windows平台存根（仅Linux/macOS编译）
+├── README.md            # 项目文档
+└── rdp-forward          # 编译后的可执行文件
 ```
+
+### 跨平台支持
+
+本项目支持多平台编译和运行：
+
+**支持的平台**：
+- ✅ Windows (amd64/386/arm64)
+- ✅ Linux (amd64/386/arm64/arm)
+- ✅ macOS (amd64/arm64)
+
+**平台差异**：
+- **Windows**: 完整功能，包括Windows服务支持
+- **Linux/macOS**: 核心转发功能完全支持，但不包含Windows服务功能
+- **日志文件**: Windows使用`\r\n`换行符，Linux/macOS使用`\n`换行符
+
+**Build Tags说明**：
+- `service_windows.go`: 仅在Windows平台编译（`//go:build windows`）
+- `service_unix.go`: 仅在非Windows平台编译（`//go:build !windows`）
 
 ### 代码架构
 
@@ -344,6 +386,7 @@ Get-Content "C:\Program Files\RDPForward\rdp-forward.log" -Wait -Tail 50
 - **统一日志接口**：`logInfo()`, `logWarn()`, `logError()`, `logDebug()`
 - **goroutine并发**：客户端→服务器、服务器→客户端双向独立转发
 - **Channel通信**：使用error channel协调goroutine生命周期
+- **平台条件编译**：使用build tags实现平台特定功能隔离
 
 ### 贡献指南
 
