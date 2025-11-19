@@ -1,0 +1,10 @@
+# Binaries
+*.exe
+rdp-forward
+rdp-forward.exe
+
+# Batch files
+*.bat
+
+# Misc
+nul
