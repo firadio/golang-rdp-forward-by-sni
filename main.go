@@ -95,9 +95,11 @@ func logMsg(config *Config, level string, connID int, clientAddr string, format 
 	// 输出到控制台
 	fmt.Print(logLine)
 
-	// 如果配置了日志文件，同时写入文件
+	// 如果配置了日志文件，同时写入文件 (使用 \r\n 作为换行符)
 	if config.LogFile != nil {
-		config.LogFile.WriteString(logLine)
+		// 替换 \n 为 \r\n 用于Windows文件日志
+		fileLogLine := logLine[:len(logLine)-1] + "\r\n"
+		config.LogFile.WriteString(fileLogLine)
 	}
 }
 
