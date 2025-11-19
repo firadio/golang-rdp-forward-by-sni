@@ -11,5 +11,5 @@
     "LAPTOP-XYZ"
   ],
   "debug": false,
-  "log_file": ""
+  "log_file": "rdp-forward.log"
 }
