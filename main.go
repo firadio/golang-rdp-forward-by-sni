@@ -42,6 +42,8 @@ type JSONConfig struct {
 func loadConfigFromFile(filename string) (*Config, error) {
 	// 尝试读取配置文件
 	data, err := os.ReadFile(filename)
+	configDir := "" // 配置文件所在目录，用于解析相对路径
+
 	if err != nil {
 		// 如果是相对路径且文件不存在,尝试使用程序所在目录
 		if !filepath.IsAbs(filename) && os.IsNotExist(err) {
@@ -52,11 +54,17 @@ func loadConfigFromFile(filename string) (*Config, error) {
 				data, err = os.ReadFile(altPath)
 				if err == nil {
 					filename = altPath // 更新为实际使用的路径
+					configDir = exeDir // 标记配置文件从程序目录加载
 				}
 			}
 		}
 		if err != nil {
 			return nil, fmt.Errorf("读取配置文件失败: %v", err)
+		}
+	} else {
+		// 配置文件从当前路径成功加载，获取其所在目录
+		if filepath.IsAbs(filename) {
+			configDir = filepath.Dir(filename)
 		}
 	}
 
@@ -65,13 +73,19 @@ func loadConfigFromFile(filename string) (*Config, error) {
 		return nil, fmt.Errorf("解析配置文件失败: %v", err)
 	}
 
+	// 处理日志文件路径：如果是相对路径且配置文件从程序目录加载，则相对于程序目录
+	logFilePath := jsonConfig.LogFile
+	if logFilePath != "" && !filepath.IsAbs(logFilePath) && configDir != "" {
+		logFilePath = filepath.Join(configDir, logFilePath)
+	}
+
 	config := &Config{
 		SNIWhitelist:    make(map[string]bool),
 		ClientWhitelist: make(map[string]bool),
 		ListenPort:      jsonConfig.Listen,
 		TargetAddr:      jsonConfig.Target,
 		Debug:           jsonConfig.Debug,
-		LogFilePath:     jsonConfig.LogFile,
+		LogFilePath:     logFilePath,
 	}
 
 	// 处理SNI白名单
