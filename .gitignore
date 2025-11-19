@@ -6,5 +6,8 @@ rdp-forward.exe
 # Batch files
 *.bat
 
+# Log files
+*.log
+
 # Misc
 nul

@@ -6,6 +6,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"golang.org/x/sys/windows/svc"
@@ -53,6 +54,20 @@ loop:
 }
 
 func runAsService(config *Config) error {
+	// 在服务模式下，打开日志文件
+	exePath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("无法获取程序路径: %v", err)
+	}
+	logDir := filepath.Dir(exePath)
+	logPath := filepath.Join(logDir, "rdp-forward.log")
+
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return fmt.Errorf("无法打开日志文件 %s: %v", logPath, err)
+	}
+	config.LogFile = logFile
+
 	return svc.Run(serviceName, &rdpService{config: config})
 }
 
@@ -100,6 +115,11 @@ func installService(exePath string, config *Config) error {
 		fmt.Printf(" -debug")
 	}
 	fmt.Println()
+
+	// 显示日志文件位置
+	logPath := filepath.Join(filepath.Dir(exePath), "rdp-forward.log")
+	fmt.Printf("服务日志文件: %s\n", logPath)
+
 	return nil
 }
 

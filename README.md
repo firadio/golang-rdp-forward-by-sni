@@ -96,11 +96,29 @@ sc stop RDPForwardBySNI
 sc query RDPForwardBySNI
 ```
 
+### 查看服务日志
+
+服务运行时会在程序所在目录生成日志文件：
+
+```powershell
+# 查看日志文件（假设程序在C:\Program Files\RDPForward目录）
+type "C:\Program Files\RDPForward\rdp-forward.log"
+
+# 或使用记事本打开
+notepad "C:\Program Files\RDPForward\rdp-forward.log"
+
+# 实时监控日志（使用PowerShell）
+Get-Content "C:\Program Files\RDPForward\rdp-forward.log" -Wait -Tail 50
+```
+
+日志文件位置：`程序所在目录\rdp-forward.log`
+
 **注意**：
 - 安装/卸载/启动/停止服务需要管理员权限
 - 服务名称：`RDPForwardBySNI`
 - 服务显示名称：`RDP Forward by SNI`
 - 服务会自动设置为开机自启动
+- 服务日志会写入到与可执行文件相同目录的`rdp-forward.log`文件中
 
 ## 工作原理
 

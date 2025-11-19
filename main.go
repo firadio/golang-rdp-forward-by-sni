@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +20,7 @@ type Config struct {
 	Whitelist    map[string]bool
 	WhitelistStr string
 	Debug        bool
+	LogFile      *os.File // 日志文件句柄
 }
 
 // Connection 连接对象
@@ -77,14 +79,23 @@ func logMsg(config *Config, level string, connID int, clientAddr string, format 
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	message := fmt.Sprintf(format, args...)
 
+	var logLine string
 	if connID > 0 {
 		if clientAddr != "" {
-			fmt.Printf("[%s] [%s] [连接#%d,%s] %s\n", timestamp, level, connID, clientAddr, message)
+			logLine = fmt.Sprintf("[%s] [%s] [连接#%d,%s] %s\n", timestamp, level, connID, clientAddr, message)
 		} else {
-			fmt.Printf("[%s] [%s] [连接#%d] %s\n", timestamp, level, connID, message)
+			logLine = fmt.Sprintf("[%s] [%s] [连接#%d] %s\n", timestamp, level, connID, message)
 		}
 	} else {
-		fmt.Printf("[%s] [%s] %s\n", timestamp, level, message)
+		logLine = fmt.Sprintf("[%s] [%s] %s\n", timestamp, level, message)
+	}
+
+	// 输出到控制台
+	fmt.Print(logLine)
+
+	// 如果配置了日志文件，同时写入文件
+	if config.LogFile != nil {
+		config.LogFile.WriteString(logLine)
 	}
 }
 
