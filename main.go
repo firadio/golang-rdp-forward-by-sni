@@ -397,8 +397,9 @@ func handleConnection(clientConn net.Conn, config *Config, connID int) {
 		buf := make([]byte, 4096)
 		packetNum := 0
 		var firstPacket []byte
-		rdpNegotiated := false  // 是否检测到RDP协商包
-		tlsDetected := false    // 是否检测到TLS升级
+		rdpNegotiated := false    // 是否检测到RDP协商包
+		tlsDetected := false      // 是否检测到TLS升级
+		clientIdentified := false // 是否已识别客户端（TLS的SNI或非TLS的客户端名）
 
 		for {
 			n, err := clientConn.Read(buf)
@@ -428,6 +429,7 @@ func handleConnection(clientConn net.Conn, config *Config, connID int) {
 				sni, err := extractSNI(firstPacket)
 				if err == nil && sni != "" {
 					conn.logInfo("[SNI] %s", sni)
+					clientIdentified = true // 标记已识别客户端
 
 					// 检查SNI白名单
 					if len(config.SNIWhitelist) > 0 {
@@ -450,6 +452,7 @@ func handleConnection(clientConn net.Conn, config *Config, connID int) {
 					clientName, err := extractRDPClientInfo(buf[:n])
 					if err == nil && clientName != "" {
 						conn.logInfo("[RDP客户端] %s (未加密连接)", clientName)
+						clientIdentified = true
 
 						// 检查客户端白名单
 						if len(config.ClientWhitelist) > 0 {
@@ -465,7 +468,7 @@ func handleConnection(clientConn net.Conn, config *Config, connID int) {
 
 				// 超过5个包还没检测到TLS也没找到客户端信息
 				// 如果配置了SNI白名单，要求必须TLS；如果配置了客户端白名单，要求必须识别客户端
-				if packetNum > 5 {
+				if packetNum > 5 && !clientIdentified {
 					if len(config.SNIWhitelist) > 0 {
 						conn.logWarn("❌ RDP协商后未检测到TLS升级，配置了SNI白名单要求TLS连接，断开连接")
 						resultErr = ErrSNINotInWhitelist
