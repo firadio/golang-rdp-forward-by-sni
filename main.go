@@ -99,6 +99,53 @@ func logMsg(config *Config, level string, connID int, clientAddr string, format 
 	}
 }
 
+// 尝试从RDP MCS Connect Initial中提取客户端信息（仅未加密连接）
+func extractRDPClientInfo(data []byte) (clientName string, err error) {
+	// MCS Connect Initial PDU的特征：
+	// TPKT header (4 bytes): 03 00 length_hi length_lo
+	// X.224 Data TPDU: length 02 f0 80
+	// MCS Connect-Initial: 7f 65 ...
+
+	if len(data) < 20 {
+		return "", fmt.Errorf("data too short")
+	}
+
+	// 检查TPKT header
+	if data[0] != 0x03 || data[1] != 0x00 {
+		return "", fmt.Errorf("not a TPKT packet")
+	}
+
+	// 查找 MCS Connect-Initial (0x7f65) 或 Connect-Response
+	// 简化实现：搜索 "clientName" 或常见的UTF-16编码的计算机名
+	// 这只是一个启发式方法，不是完整的ASN.1解析
+
+	// 在数据中搜索可能的计算机名（UTF-16编码的字符串）
+	// 通常在偏移量100-500字节之间
+	for i := 10; i < len(data)-20 && i < 600; i++ {
+		// 查找UTF-16编码的字符串模式 (ASCII字符后跟0x00)
+		if data[i] >= 0x20 && data[i] <= 0x7E && data[i+1] == 0x00 {
+			// 可能找到了UTF-16字符串
+			var name []byte
+			for j := i; j < len(data)-1 && j < i+64; j += 2 {
+				if data[j] == 0x00 && data[j+1] == 0x00 {
+					// 字符串结束
+					break
+				}
+				if data[j] >= 0x20 && data[j] <= 0x7E && data[j+1] == 0x00 {
+					name = append(name, data[j])
+				} else {
+					break
+				}
+			}
+			if len(name) > 3 { // 至少4个字符才认为是有效的计算机名
+				return string(name), nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("client name not found")
+}
+
 // 从 TLS ClientHello 中提取 SNI
 func extractSNI(data []byte) (string, error) {
 	if len(data) < 43 {
@@ -375,10 +422,28 @@ func handleConnection(clientConn net.Conn, config *Config, connID int) {
 			} else if packetNum == 1 && buf[0] == 0x03 {
 				conn.logDebug("→ RDP协议协商包 (等待TLS升级)")
 				rdpNegotiated = true
-			} else if rdpNegotiated && !tlsDetected && packetNum > 3 {
-				// RDP协商后，超过3个包还没看到TLS升级
-				if len(config.Whitelist) > 0 {
-					conn.logWarn("❌ RDP协商后未检测到TLS升级，可能是绕过SNI检查，断开连接")
+			} else if rdpNegotiated && !tlsDetected {
+				// 尝试从非TLS的RDP数据包中提取客户端信息
+				if packetNum >= 2 && packetNum <= 5 {
+					clientName, err := extractRDPClientInfo(buf[:n])
+					if err == nil && clientName != "" {
+						conn.logInfo("[RDP客户端] %s (未加密连接)", clientName)
+
+						// 如果配置了白名单，检查客户端名称
+						if len(config.Whitelist) > 0 {
+							if !config.Whitelist[clientName] {
+								conn.logWarn("❌ RDP客户端名称不在白名单中，断开连接")
+								resultErr = ErrSNINotInWhitelist
+								break
+							}
+							conn.logDebug("✓ RDP客户端名称在白名单中")
+						}
+					}
+				}
+
+				// 超过5个包还没检测到TLS也没找到客户端信息
+				if packetNum > 5 && len(config.Whitelist) > 0 {
+					conn.logWarn("❌ RDP协商后未检测到TLS升级或有效客户端信息，可能是绕过SNI检查，断开连接")
 					resultErr = ErrSNINotInWhitelist
 					break
 				}
