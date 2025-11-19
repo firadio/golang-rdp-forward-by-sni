@@ -15,12 +15,14 @@ import (
 )
 
 type Config struct {
-	ListenPort   string
-	TargetAddr   string
-	Whitelist    map[string]bool
-	WhitelistStr string
-	Debug        bool
-	LogFile      *os.File // 日志文件句柄
+	ListenPort         string
+	TargetAddr         string
+	SNIWhitelist       map[string]bool // SNI白名单（TLS连接的目标域名/IP）
+	SNIWhitelistStr    string
+	ClientWhitelist    map[string]bool // 客户端计算机名白名单（非TLS连接）
+	ClientWhitelistStr string
+	Debug              bool
+	LogFile            *os.File // 日志文件句柄
 }
 
 // Connection 连接对象
@@ -242,10 +244,18 @@ func runServer(config *Config, stopCh <-chan struct{}) {
 
 	logMsg(config, LogLevelINFO, 0, "", "监听端口: %s", config.ListenPort)
 	logMsg(config, LogLevelINFO, 0, "", "转发目标: %s", config.TargetAddr)
-	if len(config.Whitelist) > 0 {
-		logMsg(config, LogLevelINFO, 0, "", "SNI白名单: %s", config.WhitelistStr)
+	if len(config.SNIWhitelist) > 0 {
+		logMsg(config, LogLevelINFO, 0, "", "SNI白名单（TLS目标域名/IP）: %s", config.SNIWhitelistStr)
 	} else {
-		logMsg(config, LogLevelINFO, 0, "", "SNI白名单: 未设置 (允许所有)")
+		logMsg(config, LogLevelINFO, 0, "", "SNI白名单: 未设置")
+	}
+	if len(config.ClientWhitelist) > 0 {
+		logMsg(config, LogLevelINFO, 0, "", "客户端白名单（计算机名）: %s", config.ClientWhitelistStr)
+	} else {
+		logMsg(config, LogLevelINFO, 0, "", "客户端白名单: 未设置")
+	}
+	if len(config.SNIWhitelist) == 0 && len(config.ClientWhitelist) == 0 {
+		logMsg(config, LogLevelINFO, 0, "", "访问控制: 允许所有连接")
 	}
 	if config.Debug {
 		logMsg(config, LogLevelINFO, 0, "", "调试模式: 已启用")
@@ -283,13 +293,15 @@ func main() {
 	flag.StringVar(&serviceCmd, "service", "", "服务命令: install, uninstall, start, stop")
 
 	config := &Config{
-		Whitelist: make(map[string]bool),
+		SNIWhitelist:    make(map[string]bool),
+		ClientWhitelist: make(map[string]bool),
 	}
 
 	// 命令行参数
 	flag.StringVar(&config.ListenPort, "listen", ":3389", "监听端口")
 	flag.StringVar(&config.TargetAddr, "target", "", "目标地址")
-	flag.StringVar(&config.WhitelistStr, "sni", "", "SNI白名单，逗号分隔")
+	flag.StringVar(&config.SNIWhitelistStr, "sni", "", "SNI白名单（TLS连接的目标域名/IP），逗号分隔")
+	flag.StringVar(&config.ClientWhitelistStr, "client-whitelist", "", "客户端计算机名白名单（非TLS连接），逗号分隔")
 	flag.BoolVar(&config.Debug, "debug", false, "调试模式（显示详细数据包信息）")
 	flag.Parse()
 
@@ -306,12 +318,22 @@ func main() {
 		log.Fatal("必须指定 -target 参数")
 	}
 
-	// 解析白名单
-	if config.WhitelistStr != "" {
-		for _, sni := range strings.Split(config.WhitelistStr, ",") {
+	// 解析SNI白名单
+	if config.SNIWhitelistStr != "" {
+		for _, sni := range strings.Split(config.SNIWhitelistStr, ",") {
 			sni = strings.TrimSpace(sni)
 			if sni != "" {
-				config.Whitelist[sni] = true
+				config.SNIWhitelist[sni] = true
+			}
+		}
+	}
+
+	// 解析客户端白名单
+	if config.ClientWhitelistStr != "" {
+		for _, client := range strings.Split(config.ClientWhitelistStr, ",") {
+			client = strings.TrimSpace(client)
+			if client != "" {
+				config.ClientWhitelist[client] = true
 			}
 		}
 	}
@@ -407,9 +429,9 @@ func handleConnection(clientConn net.Conn, config *Config, connID int) {
 				if err == nil && sni != "" {
 					conn.logInfo("[SNI] %s", sni)
 
-					// 检查白名单（可以包含域名或IP地址）
-					if len(config.Whitelist) > 0 {
-						if !config.Whitelist[sni] {
+					// 检查SNI白名单
+					if len(config.SNIWhitelist) > 0 {
+						if !config.SNIWhitelist[sni] {
 							conn.logWarn("❌ SNI不在白名单中，断开连接")
 							resultErr = ErrSNINotInWhitelist
 							break
@@ -429,9 +451,9 @@ func handleConnection(clientConn net.Conn, config *Config, connID int) {
 					if err == nil && clientName != "" {
 						conn.logInfo("[RDP客户端] %s (未加密连接)", clientName)
 
-						// 如果配置了白名单，检查客户端名称
-						if len(config.Whitelist) > 0 {
-							if !config.Whitelist[clientName] {
+						// 检查客户端白名单
+						if len(config.ClientWhitelist) > 0 {
+							if !config.ClientWhitelist[clientName] {
 								conn.logWarn("❌ RDP客户端名称不在白名单中，断开连接")
 								resultErr = ErrSNINotInWhitelist
 								break
@@ -442,10 +464,18 @@ func handleConnection(clientConn net.Conn, config *Config, connID int) {
 				}
 
 				// 超过5个包还没检测到TLS也没找到客户端信息
-				if packetNum > 5 && len(config.Whitelist) > 0 {
-					conn.logWarn("❌ RDP协商后未检测到TLS升级或有效客户端信息，可能是绕过SNI检查，断开连接")
-					resultErr = ErrSNINotInWhitelist
-					break
+				// 如果配置了SNI白名单，要求必须TLS；如果配置了客户端白名单，要求必须识别客户端
+				if packetNum > 5 {
+					if len(config.SNIWhitelist) > 0 {
+						conn.logWarn("❌ RDP协商后未检测到TLS升级，配置了SNI白名单要求TLS连接，断开连接")
+						resultErr = ErrSNINotInWhitelist
+						break
+					}
+					if len(config.ClientWhitelist) > 0 {
+						conn.logWarn("❌ 未能识别RDP客户端信息，配置了客户端白名单要求识别客户端，断开连接")
+						resultErr = ErrSNINotInWhitelist
+						break
+					}
 				}
 			}
 

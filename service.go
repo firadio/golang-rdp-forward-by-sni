@@ -89,8 +89,11 @@ func installService(exePath string, config *Config) error {
 		"-listen", config.ListenPort,
 		"-target", config.TargetAddr,
 	}
-	if config.WhitelistStr != "" {
-		args = append(args, "-sni", config.WhitelistStr)
+	if config.SNIWhitelistStr != "" {
+		args = append(args, "-sni", config.SNIWhitelistStr)
+	}
+	if config.ClientWhitelistStr != "" {
+		args = append(args, "-client-whitelist", config.ClientWhitelistStr)
 	}
 	if config.Debug {
 		args = append(args, "-debug")
@@ -108,8 +111,11 @@ func installService(exePath string, config *Config) error {
 
 	fmt.Printf("服务 '%s' 安装成功\n", serviceDisplayName)
 	fmt.Printf("启动参数: -listen %s -target %s", config.ListenPort, config.TargetAddr)
-	if config.WhitelistStr != "" {
-		fmt.Printf(" -sni %s", config.WhitelistStr)
+	if config.SNIWhitelistStr != "" {
+		fmt.Printf(" -sni %s", config.SNIWhitelistStr)
+	}
+	if config.ClientWhitelistStr != "" {
+		fmt.Printf(" -client-whitelist %s", config.ClientWhitelistStr)
 	}
 	if config.Debug {
 		fmt.Printf(" -debug")
