@@ -365,48 +365,69 @@ func runServer(config *Config, stopCh <-chan struct{}) {
 func main() {
 	var serviceCmd string
 	var configFile string
+	var listenPort string
+	var targetAddr string
+	var sniWhitelistStr string
+	var clientWhitelistStr string
+	var debugMode bool
+
 	flag.StringVar(&serviceCmd, "service", "", "服务命令: install, uninstall, start, stop")
 	flag.StringVar(&configFile, "c", "", "配置文件路径（JSON格式）")
-
-	config := &Config{
-		SNIWhitelist:    make(map[string]bool),
-		ClientWhitelist: make(map[string]bool),
-	}
-
-	// 命令行参数
-	flag.StringVar(&config.ListenPort, "listen", ":3389", "监听端口")
-	flag.StringVar(&config.TargetAddr, "target", "", "目标地址")
-	flag.StringVar(&config.SNIWhitelistStr, "sni", "", "SNI白名单（TLS连接的目标域名/IP），逗号分隔")
-	flag.StringVar(&config.ClientWhitelistStr, "client-whitelist", "", "客户端计算机名白名单（非TLS连接），逗号分隔")
-	flag.BoolVar(&config.Debug, "debug", false, "调试模式（显示详细数据包信息）")
+	flag.StringVar(&listenPort, "listen", "", "监听端口")
+	flag.StringVar(&targetAddr, "target", "", "目标地址")
+	flag.StringVar(&sniWhitelistStr, "sni", "", "SNI白名单（TLS连接的目标域名/IP），逗号分隔")
+	flag.StringVar(&clientWhitelistStr, "client-whitelist", "", "客户端计算机名白名单（非TLS连接），逗号分隔")
+	flag.BoolVar(&debugMode, "debug", false, "调试模式（显示详细数据包信息）")
 	flag.Parse()
 
-	// 如果指定了配置文件，从文件加载配置
+	var config *Config
+	var err error
+
+	// 1. 如果指定了配置文件，先从文件加载配置
 	if configFile != "" {
-		var err error
 		config, err = loadConfigFromFile(configFile)
 		if err != nil {
 			log.Fatalf("加载配置文件失败: %v", err)
 		}
 	} else {
-		// 没有使用配置文件时，解析命令行参数的白名单
-		// 解析SNI白名单
-		if config.SNIWhitelistStr != "" {
-			for _, sni := range strings.Split(config.SNIWhitelistStr, ",") {
-				sni = strings.TrimSpace(sni)
-				if sni != "" {
-					config.SNIWhitelist[sni] = true
-				}
+		// 没有配置文件时，初始化空配置
+		config = &Config{
+			SNIWhitelist:    make(map[string]bool),
+			ClientWhitelist: make(map[string]bool),
+			ListenPort:      ":3389", // 默认值
+		}
+	}
+
+	// 2. 命令行参数覆盖配置文件（如果指定了的话）
+	if listenPort != "" {
+		config.ListenPort = listenPort
+	}
+	if targetAddr != "" {
+		config.TargetAddr = targetAddr
+	}
+	if debugMode {
+		config.Debug = true
+	}
+
+	// 3. 处理命令行的白名单参数（会覆盖配置文件）
+	if sniWhitelistStr != "" {
+		config.SNIWhitelistStr = sniWhitelistStr
+		config.SNIWhitelist = make(map[string]bool) // 清空配置文件的设置
+		for _, sni := range strings.Split(sniWhitelistStr, ",") {
+			sni = strings.TrimSpace(sni)
+			if sni != "" {
+				config.SNIWhitelist[sni] = true
 			}
 		}
+	}
 
-		// 解析客户端白名单
-		if config.ClientWhitelistStr != "" {
-			for _, client := range strings.Split(config.ClientWhitelistStr, ",") {
-				client = strings.TrimSpace(client)
-				if client != "" {
-					config.ClientWhitelist[client] = true
-				}
+	if clientWhitelistStr != "" {
+		config.ClientWhitelistStr = clientWhitelistStr
+		config.ClientWhitelist = make(map[string]bool) // 清空配置文件的设置
+		for _, client := range strings.Split(clientWhitelistStr, ",") {
+			client = strings.TrimSpace(client)
+			if client != "" {
+				config.ClientWhitelist[client] = true
 			}
 		}
 	}
