@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -39,9 +40,24 @@ type JSONConfig struct {
 
 // 从JSON配置文件加载配置
 func loadConfigFromFile(filename string) (*Config, error) {
+	// 尝试读取配置文件
 	data, err := os.ReadFile(filename)
 	if err != nil {
-		return nil, fmt.Errorf("读取配置文件失败: %v", err)
+		// 如果是相对路径且文件不存在,尝试使用程序所在目录
+		if !filepath.IsAbs(filename) && os.IsNotExist(err) {
+			exePath, exeErr := os.Executable()
+			if exeErr == nil {
+				exeDir := filepath.Dir(exePath)
+				altPath := filepath.Join(exeDir, filename)
+				data, err = os.ReadFile(altPath)
+				if err == nil {
+					filename = altPath // 更新为实际使用的路径
+				}
+			}
+		}
+		if err != nil {
+			return nil, fmt.Errorf("读取配置文件失败: %v", err)
+		}
 	}
 
 	var jsonConfig JSONConfig
