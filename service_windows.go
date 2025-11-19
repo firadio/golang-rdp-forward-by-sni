@@ -54,19 +54,14 @@ loop:
 }
 
 func runAsService(config *Config) error {
-	// 在服务模式下，打开日志文件
+	// 在服务模式下，设置日志文件路径（使用追加模式，不持续打开）
 	exePath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("无法获取程序路径: %v", err)
 	}
 	logDir := filepath.Dir(exePath)
 	logPath := filepath.Join(logDir, "rdp-forward.log")
-
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return fmt.Errorf("无法打开日志文件 %s: %v", logPath, err)
-	}
-	config.LogFile = logFile
+	config.LogFilePath = logPath
 
 	return svc.Run(serviceName, &rdpService{config: config})
 }

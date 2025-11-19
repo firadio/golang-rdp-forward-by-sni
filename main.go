@@ -23,7 +23,7 @@ type Config struct {
 	ClientWhitelist    map[string]bool // 客户端计算机名白名单（非TLS连接）
 	ClientWhitelistStr string
 	Debug              bool
-	LogFile            *os.File // 日志文件句柄
+	LogFilePath        string // 日志文件路径（用于追加模式写入）
 }
 
 // Connection 连接对象
@@ -96,14 +96,19 @@ func logMsg(config *Config, level string, connID int, clientAddr string, format 
 	// 输出到控制台
 	fmt.Print(logLine)
 
-	// 如果配置了日志文件，同时写入文件
-	if config.LogFile != nil {
-		// Windows使用\r\n，其他系统使用\n
-		if runtime.GOOS == "windows" {
-			fileLogLine := logLine[:len(logLine)-1] + "\r\n"
-			config.LogFile.WriteString(fileLogLine)
-		} else {
-			config.LogFile.WriteString(logLine)
+	// 如果配置了日志文件路径，以追加模式写入文件
+	if config.LogFilePath != "" {
+		// 每次打开文件追加写入，然后关闭（避免文件被锁定）
+		logFile, err := os.OpenFile(config.LogFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err == nil {
+			// Windows使用\r\n，其他系统使用\n
+			if runtime.GOOS == "windows" {
+				fileLogLine := logLine[:len(logLine)-1] + "\r\n"
+				logFile.WriteString(fileLogLine)
+			} else {
+				logFile.WriteString(logLine)
+			}
+			logFile.Close()
 		}
 	}
 }
