@@ -79,10 +79,16 @@ func loadConfigFromFile(filename string) (*Config, error) {
 		logFilePath = filepath.Join(configDir, logFilePath)
 	}
 
+	// 如果配置文件未指定监听端口,使用默认值
+	listenPort := jsonConfig.Listen
+	if listenPort == "" {
+		listenPort = ":3389"
+	}
+
 	config := &Config{
 		SNIWhitelist:    make(map[string]bool),
 		ClientWhitelist: make(map[string]bool),
-		ListenPort:      jsonConfig.Listen,
+		ListenPort:      listenPort,
 		TargetAddr:      jsonConfig.Target,
 		Debug:           jsonConfig.Debug,
 		LogFilePath:     logFilePath,
