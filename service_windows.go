@@ -66,7 +66,7 @@ func runAsService(config *Config) error {
 	return svc.Run(serviceName, &rdpService{config: config})
 }
 
-func installService(exePath string, config *Config) error {
+func installService(exePath string, configFile string, config *Config) error {
 	m, err := mgr.Connect()
 	if err != nil {
 		return fmt.Errorf("无法连接到服务管理器: %v", err)
@@ -80,18 +80,31 @@ func installService(exePath string, config *Config) error {
 	}
 
 	// 构建服务启动参数
-	args := []string{
-		"-listen", config.ListenPort,
-		"-target", config.TargetAddr,
-	}
-	if config.SNIWhitelistStr != "" {
-		args = append(args, "-sni", config.SNIWhitelistStr)
-	}
-	if config.ClientWhitelistStr != "" {
-		args = append(args, "-client-whitelist", config.ClientWhitelistStr)
-	}
-	if config.Debug {
-		args = append(args, "-debug")
+	var args []string
+
+	// 优先使用配置文件
+	if configFile != "" {
+		args = append(args, "-c", configFile)
+		// 如果有命令行参数，也一并传递（用于覆盖配置文件）
+		if config.ListenPort != "" && config.ListenPort != ":3389" {
+			args = append(args, "-listen", config.ListenPort)
+		}
+		if config.Debug {
+			args = append(args, "-debug")
+		}
+	} else {
+		// 没有配置文件时，使用命令行参数
+		args = append(args, "-listen", config.ListenPort)
+		args = append(args, "-target", config.TargetAddr)
+		if config.SNIWhitelistStr != "" {
+			args = append(args, "-sni", config.SNIWhitelistStr)
+		}
+		if config.ClientWhitelistStr != "" {
+			args = append(args, "-client-whitelist", config.ClientWhitelistStr)
+		}
+		if config.Debug {
+			args = append(args, "-debug")
+		}
 	}
 
 	s, err = m.CreateService(serviceName, exePath, mgr.Config{
@@ -105,15 +118,25 @@ func installService(exePath string, config *Config) error {
 	defer s.Close()
 
 	fmt.Printf("服务 '%s' 安装成功\n", serviceDisplayName)
-	fmt.Printf("启动参数: -listen %s -target %s", config.ListenPort, config.TargetAddr)
-	if config.SNIWhitelistStr != "" {
-		fmt.Printf(" -sni %s", config.SNIWhitelistStr)
-	}
-	if config.ClientWhitelistStr != "" {
-		fmt.Printf(" -client-whitelist %s", config.ClientWhitelistStr)
-	}
-	if config.Debug {
-		fmt.Printf(" -debug")
+	if configFile != "" {
+		fmt.Printf("启动参数: -c %s", configFile)
+		if config.ListenPort != "" && config.ListenPort != ":3389" {
+			fmt.Printf(" -listen %s", config.ListenPort)
+		}
+		if config.Debug {
+			fmt.Printf(" -debug")
+		}
+	} else {
+		fmt.Printf("启动参数: -listen %s -target %s", config.ListenPort, config.TargetAddr)
+		if config.SNIWhitelistStr != "" {
+			fmt.Printf(" -sni %s", config.SNIWhitelistStr)
+		}
+		if config.ClientWhitelistStr != "" {
+			fmt.Printf(" -client-whitelist %s", config.ClientWhitelistStr)
+		}
+		if config.Debug {
+			fmt.Printf(" -debug")
+		}
 	}
 	fmt.Println()
 

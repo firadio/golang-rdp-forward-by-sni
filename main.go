@@ -434,7 +434,7 @@ func main() {
 
 	// 处理服务命令
 	if serviceCmd != "" {
-		err := handleServiceCommand(serviceCmd, config)
+		err := handleServiceCommand(serviceCmd, configFile, config)
 		if err != nil {
 			log.Fatalf("服务命令执行失败: %v", err)
 		}
@@ -459,14 +459,14 @@ func main() {
 	runServer(config, stopCh)
 }
 
-func handleServiceCommand(cmd string, config *Config) error {
+func handleServiceCommand(cmd string, configFile string, config *Config) error {
 	switch cmd {
 	case "install":
 		exePath, err := getExecutablePath()
 		if err != nil {
 			return err
 		}
-		return installService(exePath, config)
+		return installService(exePath, configFile, config)
 	case "uninstall":
 		return uninstallService()
 	case "start":

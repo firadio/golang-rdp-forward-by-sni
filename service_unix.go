@@ -13,7 +13,7 @@ func runAsService(config *Config) error {
 	return fmt.Errorf("Windows服务功能仅在Windows平台可用")
 }
 
-func installService(exePath string, config *Config) error {
+func installService(exePath string, configFile string, config *Config) error {
 	return fmt.Errorf("Windows服务功能仅在Windows平台可用")
 }
 
