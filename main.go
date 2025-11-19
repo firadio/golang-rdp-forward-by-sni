@@ -173,32 +173,8 @@ func extractSNI(data []byte) (string, error) {
 	return "", nil
 }
 
-func main() {
-	config := &Config{
-		Whitelist: make(map[string]bool),
-	}
-
-	// 命令行参数
-	flag.StringVar(&config.ListenPort, "listen", ":3389", "监听端口")
-	flag.StringVar(&config.TargetAddr, "target", "", "目标地址")
-	flag.StringVar(&config.WhitelistStr, "sni", "", "SNI白名单，逗号分隔")
-	flag.BoolVar(&config.Debug, "debug", false, "调试模式（显示详细数据包信息）")
-	flag.Parse()
-
-	if config.TargetAddr == "" {
-		log.Fatal("必须指定 -target 参数")
-	}
-
-	// 解析白名单
-	if config.WhitelistStr != "" {
-		for _, sni := range strings.Split(config.WhitelistStr, ",") {
-			sni = strings.TrimSpace(sni)
-			if sni != "" {
-				config.Whitelist[sni] = true
-			}
-		}
-	}
-
+// runServer 运行转发服务器
+func runServer(config *Config, stopCh <-chan struct{}) {
 	// 监听端口
 	listener, err := net.Listen("tcp", config.ListenPort)
 	if err != nil {
@@ -219,15 +195,99 @@ func main() {
 	logMsg(config, LogLevelINFO, 0, "", "等待连接...")
 
 	connID := 0
-	for {
-		clientConn, err := listener.Accept()
-		if err != nil {
-			logMsg(config, LogLevelERROR, 0, "", "接受连接失败: %v", err)
-			continue
-		}
 
-		connID++
-		go handleConnection(clientConn, config, connID)
+	// 用于接受连接
+	go func() {
+		for {
+			clientConn, err := listener.Accept()
+			if err != nil {
+				select {
+				case <-stopCh:
+					return
+				default:
+					logMsg(config, LogLevelERROR, 0, "", "接受连接失败: %v", err)
+					continue
+				}
+			}
+
+			connID++
+			go handleConnection(clientConn, config, connID)
+		}
+	}()
+
+	// 等待停止信号
+	<-stopCh
+	logMsg(config, LogLevelINFO, 0, "", "服务正在停止...")
+}
+
+func main() {
+	var serviceCmd string
+	flag.StringVar(&serviceCmd, "service", "", "服务命令: install, uninstall, start, stop")
+
+	config := &Config{
+		Whitelist: make(map[string]bool),
+	}
+
+	// 命令行参数
+	flag.StringVar(&config.ListenPort, "listen", ":3389", "监听端口")
+	flag.StringVar(&config.TargetAddr, "target", "", "目标地址")
+	flag.StringVar(&config.WhitelistStr, "sni", "", "SNI白名单，逗号分隔")
+	flag.BoolVar(&config.Debug, "debug", false, "调试模式（显示详细数据包信息）")
+	flag.Parse()
+
+	// 处理服务命令
+	if serviceCmd != "" {
+		err := handleServiceCommand(serviceCmd)
+		if err != nil {
+			log.Fatalf("服务命令执行失败: %v", err)
+		}
+		return
+	}
+
+	if config.TargetAddr == "" {
+		log.Fatal("必须指定 -target 参数")
+	}
+
+	// 解析白名单
+	if config.WhitelistStr != "" {
+		for _, sni := range strings.Split(config.WhitelistStr, ",") {
+			sni = strings.TrimSpace(sni)
+			if sni != "" {
+				config.Whitelist[sni] = true
+			}
+		}
+	}
+
+	// 检查是否作为Windows服务运行
+	if isWindowsService() {
+		err := runAsService(config)
+		if err != nil {
+			log.Fatalf("运行服务失败: %v", err)
+		}
+		return
+	}
+
+	// 作为控制台程序运行
+	stopCh := make(chan struct{})
+	runServer(config, stopCh)
+}
+
+func handleServiceCommand(cmd string) error {
+	switch cmd {
+	case "install":
+		exePath, err := getExecutablePath()
+		if err != nil {
+			return err
+		}
+		return installService(exePath)
+	case "uninstall":
+		return uninstallService()
+	case "start":
+		return startService()
+	case "stop":
+		return stopService()
+	default:
+		return fmt.Errorf("未知的服务命令: %s (可用命令: install, uninstall, start, stop)", cmd)
 	}
 }
 

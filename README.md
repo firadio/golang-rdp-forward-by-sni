@@ -22,10 +22,10 @@ go build -o rdp-forward main.go
 或在Windows上:
 
 ```bash
-go build -o rdp-forward.exe main.go
+go build -o rdp-forward.exe
 ```
 
-### 基本使用
+### 基本使用（控制台模式）
 
 ```bash
 # 监听3389端口，转发到本地28820端口
@@ -55,6 +55,52 @@ go build -o rdp-forward.exe main.go
 | `-target` | **必填** | 目标服务器地址（格式：`IP:端口`） |
 | `-sni` | 空（允许所有） | SNI白名单，多个域名用逗号分隔 |
 | `-debug` | `false` | 启用DEBUG模式，显示详细的数据包信息 |
+| `-service` | 空 | Windows服务命令：install, uninstall, start, stop |
+
+## Windows服务模式
+
+程序支持作为Windows服务运行，实现开机自启和后台运行。
+
+### 安装服务
+
+```powershell
+# 以管理员身份运行
+.\rdp-forward.exe -service install -listen :3389 -target 127.0.0.1:28820 -sni "rdp.example.com"
+```
+
+### 启动服务
+
+```powershell
+.\rdp-forward.exe -service start
+# 或使用Windows服务管理
+sc start RDPForwardBySNI
+```
+
+### 停止服务
+
+```powershell
+.\rdp-forward.exe -service stop
+# 或使用Windows服务管理
+sc stop RDPForwardBySNI
+```
+
+### 卸载服务
+
+```powershell
+.\rdp-forward.exe -service uninstall
+```
+
+### 查看服务状态
+
+```powershell
+sc query RDPForwardBySNI
+```
+
+**注意**：
+- 安装/卸载/启动/停止服务需要管理员权限
+- 服务名称：`RDPForwardBySNI`
+- 服务显示名称：`RDP Forward by SNI`
+- 服务会自动设置为开机自启动
 
 ## 工作原理
 
